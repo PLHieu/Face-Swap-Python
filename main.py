@@ -8,6 +8,34 @@ detector = dlib.get_frontal_face_detector()
 sp = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
 
 
+# Find the indexes of 3 vertexes in all triangles after deviding all points into many triangles
+# coor_landmarks is an  array containing coordinates of all points 
+def find_indexes_3vertex_alltrian(coor_landmarks):
+    # convert into numpy type 
+    coor_points = np.array(coor_landmarks, np.int32)
+    convexhull = cv2.convexHull(coor_points)
+    #delaunav triangulation 
+    rect = cv2.boundingRect(convexhull)
+    subdiv = cv2.Subdiv2D(rect)
+    subdiv.insert(coor_landmarks)
+    triangles = subdiv.getTriangleList()
+
+    # Find the indexes of 3 vertexes in all triangles   
+    index_trangles = []
+    for t in triangles:
+        vertex1 = (t[0], t[1])
+        vertex2 = (t[2], t[3])
+        vertex3 = (t[4], t[5])
+
+        index_vertex_1 = np.where((coor_points == vertex1).all(axis = 1))[0][0]
+        index_vertex_2 = np.where((coor_points == vertex2).all(axis = 1))[0][0]
+        index_vertex_3 = np.where((coor_points == vertex3).all(axis = 1))[0][0]
+
+        if index_vertex_1 is not None and index_vertex_2 is not None and index_vertex_3 is not None:
+            index_trangles.append([index_vertex_1, index_vertex_2, index_vertex_3])
+
+    return index_trangles
+
 # Image one
 img1 = cv2.imread("messi.jpg")
 img_gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
@@ -21,31 +49,9 @@ for face1 in faces1:
         x= landmarks1.part(i).x
         y= landmarks1.part(i).y
         coor_landmarks1.append((x,y))
-    # convert into numpy type 
-    coor_points1 = np.array(coor_landmarks1, np.int32)
-    convexhull1 = cv2.convexHull(coor_points1)
-
-#delaunav triangulation 
-rect = cv2.boundingRect(convexhull1)
-subdiv = cv2.Subdiv2D(rect)
-subdiv.insert(coor_landmarks1)
-triangles = subdiv.getTriangleList()
-triangles = np.array(triangles, dtype=np.int32)
 
 
-# Find the index of points of every vertex triangles
-index_trangles = []
-for t in triangles:
-    vertex1 = (t[0], t[1])
-    vertex2 = (t[2], t[3])
-    vertex3 = (t[4], t[5])
-
-    index_vertex_1 = np.where((coor_points1 == vertex1).all(axis = 1))[0][0]
-    index_vertex_2 = np.where((coor_points1 == vertex2).all(axis = 1))[0][0]
-    index_vertex_3 = np.where((coor_points1 == vertex3).all(axis = 1))[0][0]
-
-    if index_vertex_1 is not None and index_vertex_2 is not None and index_vertex_3 is not None:
-        index_trangles.append([index_vertex_1, index_vertex_2, index_vertex_3])
+index_trangles = find_indexes_3vertex_alltrian(coor_landmarks1)
 
 
 # Face 2
@@ -65,22 +71,11 @@ for face2 in faces2:
     coor_points2 = np.array(coor_landmarks2, np.int32)
     convexhull2 = cv2.convexHull(coor_points2)
 
-
-height, width, channels = img2.shape
-img2_newface = np.zeros((height, width, channels), np.uint8)
-
-# TODO: 
-# 
-lines_space_mask = np.zeros_like(img_gray1)
-lines_space_new_face = np.zeros_like(img2)
+# create a newface for person2
+img2_newface = np.zeros(img2.shape, np.uint8)
 
 # reuse the indexes triangles
 for triangle in index_trangles:
-
-    # no need to draw triangles in face 2
-    # cv2.line(img2, pt1, pt2, (0, 0, 255), 1)
-    # cv2.line(img2, pt3, pt2, (0, 0, 255), 1)
-    # cv2.line(img2, pt1, pt3, (0, 0, 255), 1)
     
     # vertex triangle of the first face
     tr1_pt1 = coor_landmarks1[triangle[0]]
@@ -97,13 +92,11 @@ for triangle in index_trangles:
     coor_3vertex_tri1_mask = np.array([[tr1_pt1[0] - x, tr1_pt1[1] - y],
                                         [tr1_pt2[0] - x, tr1_pt2[1] - y],
                                         [tr1_pt3[0] - x, tr1_pt3[1] - y]],np.int32)
-    # fill all pixel inside the triangle with white
+    # fill all pixel inside the triangle mask with white
     cv2.fillConvexPoly(tr1_mask,coor_3vertex_tri1_mask , 255)
-
-    # cv2.line(lines_space_mask, tr1_pt1, tr1_pt2, 255)
-    # cv2.line(lines_space_mask, tr1_pt2, tr1_pt3, 255)
-    # cv2.line(lines_space_mask, tr1_pt1, tr1_pt3, 255)
-    # croppedRect1 = cv2.bitwise_and(croppedRect1, croppedRect1, mask = lines_space_mask)
+    #TODO: neu bo dong nay se loai bo duoc loi vien trang
+    # after creating the mask, we start to crop the triangle, remove the outside details
+    # croppedRect1 = cv2.bitwise_and(croppedRect1, croppedRect1, mask = tr1_mask)
 
     # vertex triangle of the second face
     tr2_pt1 = coor_landmarks2[triangle[0]]
@@ -120,8 +113,10 @@ for triangle in index_trangles:
     coor_3vertex_tri2_mask = np.array([[tr2_pt1[0] - x, tr2_pt1[1] - y],
                                         [tr2_pt2[0] - x, tr2_pt2[1] - y],
                                         [tr2_pt3[0] - x, tr2_pt3[1] - y]],np.int32)
-    # fill all pixel inside the triangle with white
+    # fill all pixel inside the triangle mask with white
     cv2.fillConvexPoly(tr2_mask,coor_3vertex_tri2_mask , 255)
+    #TODO: neu bo dong nay se loai bo duoc loi vien trang
+    # after creating the mask , we need to crop the triangle, remove the outside details
     # croppedRect2 = cv2.bitwise_and(croppedRect2, croppedRect2, mask = tr2_mask)
 
     # warp 2 triangles
@@ -129,13 +124,12 @@ for triangle in index_trangles:
     coor_3vertex_tri2_mask = np.float32(coor_3vertex_tri2_mask)
     M = cv2.getAffineTransform(coor_3vertex_tri1_mask, coor_3vertex_tri2_mask)
     warped_triangle = cv2.warpAffine(croppedRect1, M, (w,h))
-    # TODO: wweird
+    # TODO: loai bo loi vien trang
     warped_triangle = cv2.bitwise_and(warped_triangle, warped_triangle, mask=tr2_mask)
 
     # Reconstrucing face2
     img2_newface_rect_area = img2_newface[y:y+h, x:x+w]
-    # ngan khong cho vach trang xuat hien
-    # TODO:
+    # TODO: ngan khong cho vach trang xuat hien
     img2_new_face_rect_area_gray = cv2.cvtColor(img2_newface_rect_area, cv2.COLOR_BGR2GRAY)
     _, mask_triangles_designed = cv2.threshold(img2_new_face_rect_area_gray, 1, 255, cv2.THRESH_BINARY_INV)
     warped_triangle = cv2.bitwise_and(warped_triangle, warped_triangle, mask=mask_triangles_designed)
@@ -165,9 +159,9 @@ seamlessclone = cv2.seamlessClone(result, img2, img2_head_mask, center_face2, cv
 
 
 
-# cv2.imshow("Image 1", img1)
-# cv2.imshow("image2", img2)
-cv2.imshow("s", seamlessclone)
+cv2.imshow("image2", img2)
+cv2.imshow("s", img2_newface)
+cv2.imshow("Image 1", img1)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
 
